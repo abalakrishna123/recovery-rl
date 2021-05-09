@@ -12,7 +12,7 @@
   <a href="https://sites.google.com/berkeley.edu/recovery-rl/">View website</a>
 </p>
 
-# Installation and Setup
+# Description
 ------------
 Implementation of  <a href="https://arxiv.org/pdf/2010.15920.pdf">Recovery RL: Safe Reinforcement Learning with Learned Recovery Zones</a>. The SAC code is built 
 on top of the Pytorch implementation of Soft Actor Critic from <a href="https://github.com/pranz24/pytorch-soft-actor-critic">pytorch-soft-actor-critic</a>. For the 
