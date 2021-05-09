@@ -1,0 +1,147 @@
+<mujoco model="pushing2d">
+
+    <compiler inertiafromgeom="auto" angle="radian" coordinate="local" eulerseq="XYZ"/>
+    <size njmax="6000" nconmax="6000"/>
+    <option timestep="0.005" gravity="0 0 -9.81" iterations="50" integrator="Euler" noslip_iterations="2"/>
+    <default>
+        <joint limited="false" damping="1" />
+        <geom contype="1" conaffinity="1" condim="3" friction=".5 .1 .1" density="1000" margin="0.002" />
+    </default>
+
+    <worldbody>
+        <camera name="maincam" mode= "fixed" fovy="32" euler="0.7 0 0" pos="0 -0.65 .75"/>
+        <camera name="leftcam" mode= "fixed" fovy="32" euler="0.7 0 -1.57" pos="-1.1 0 1.3"/>
+        <!-- <camera name="leftcam" mode= "fixed" fovy="32" euler="0.7 0 -1.57" pos="-0.5 -1 1.3"/> -->
+        <body name="gripper" pos="-0. 0.2 0.08">
+            <inertial pos="0 0 0" mass="1" diaginertia="16.667 16.667 16.667"/>
+            <geom type="box" size=".1 .03 .03" rgba="0.1 0.0 0.9 1" contype="7" conaffinity="7"/>
+            <geom type="box" size=".07 1 0.035" rgba="0.9 0.9 0.9 1" pos="0 1 0" contype="7" conaffinity="7"/>
+
+            <joint name="slide_x" type="slide" pos="0 0 0" axis="1 0 0" limited="true" range="-0.5 0.5" armature="0" damping="30" stiffness="0"/>
+            <joint name="slide_y" type="slide" pos="0 0 0" axis="0 1 0" limited="true" range="-0.5 0.5" armature="0" damping="30" stiffness="0"/>
+            <joint name="slide_z" type="slide" pos="0 0 0" axis="0 0 1"  limited="true" range="-0.08 0.15"/>
+
+            <joint name="hinge_z" type="hinge" pos="0 0 0" axis="0 0 1" limited="true" range="-6.28 6.28" damping="30"/>
+
+
+            <body name="fingers" pos="'0 0 0">
+
+
+                <body name="finger1" pos="-0.08 -0.08 -0.0">
+                    <joint name="j_finger1" type="slide" pos="0 0 0" axis="1 0 0"  limited="true" range="0.0 0.0615" />
+                    <!--<geom contype="1" conaffinity="1" type="box" size=".01 .02 .1" rgba="0.3 0.3 0.3 1"  mass="0.08"/>-->
+                    <geom condim="6" contype="2" conaffinity="2" type="box" size=".01 .1 .02" rgba="0. 1.0 1.0 1"  mass="0.08"/> <!-- solimp="0.99 0.99 0.01" solref="0.01 1" /> -->
+                    <site name="finger1_surf" pos="0.01 0 0" size=".0025 .0190 .095" type="box" rgba="0.0 1.0 0.0 0"/>
+
+                </body>
+
+                <body name="finger2" pos="0.08 -0.08 -0.0">
+                    <joint name="j_finger2" type="slide" pos="0 0 0" axis="1 0 0" />
+                    <!--<geom contype="1" conaffinity="1"  type="box" size=".01 .02 .1" rgba="0.3 0.3 0.3 1" mass="0.08"/>-->
+                    <geom condim="6" contype="4" conaffinity="4"  type="box" size=".01 .1 .02" rgba="0. 1.0 1.0 1" mass="0.08" /> <!-- solimp="0.99 0.99 0.01" solref="0.01 1" />-->
+                    <site name="finger2_surf" pos="-0.01 0 0" size=".0025 .0190 .095" type="box" rgba="1.0 0.0 0.0 0"/>
+                </body>
+            </body>
+
+
+        </body>
+
+
+        <body name="container" pos="0  0  -0.05">
+
+            <body name="border_front" pos="0 -.25  0">
+                 <geom type="box" size=".5 .01 .1" rgba="0 .1 .9 .3" contype="7" conaffinity="7"/>
+            </body>
+
+            <body name="border_rear" pos="0 .25  0">
+                 <geom type="box" size=".5 .01 .01" rgba="0 .1 .9 .3" contype="7" conaffinity="7"/>
+            </body>
+
+            <body name="border_right" pos=".5 0  0">
+                 <geom type="box" size=".01  .25 .2" rgba="0 .1 .9 .3" contype="7" conaffinity="7"/>
+            </body>
+
+            <body name="border_left" pos="-.5 0  0">
+                 <geom type="box" size=".01  .25 .2" rgba="0 .1 .9 .3" contype="7" conaffinity="7"/>
+            </body>
+
+            <body name="table" pos="0 0 -.01">
+                 <geom type="box" size=".5  .25 .01" rgba="0 .9 0 1" contype="7" conaffinity="7" friction="1.2, 0.01, .01"/>
+            </body>
+
+            <!--<body name="invisible_border_front" pos="0 -.5  0">-->
+                 <!--<geom type="box" size=".5 .01 0.5" rgba="0 .1 .9 0."/>-->
+            <!--</body>-->
+
+            <!--<body name="invisible_border_rear" pos="0 .5  0">-->
+                 <!--<geom type="box" size=".5 .01 0.5" rgba="0 .1 .9 0."/>-->
+            <!--</body>-->
+
+            <!--<body name="invisible_border_right" pos=".5 0  0">-->
+                 <!--<geom type="box" size=".01 .5 0.5" rgba="0 .1 .9 0."/>-->
+            <!--</body>-->
+
+            <!--<body name="invisible_border_left" pos="-.5 0  0">-->
+                 <!--<geom type="box" size=".01 .5 0.5" rgba="0 .1 .9 0."/>-->
+            <!--</body>-->
+        </body>
+
+        <body name="light_body0" pos="0 0 0.5">
+             <light name="light0" mode="fixed" directional="false" active="true" castshadow="true"/>
+        </body>
+<!--         <body name="light_body1" pos="0.2 0.2 0.3" euler="-1.57 1.57 0">
+             <light name="light1" mode="fixed" directional="true" active="true" castshadow="true"/>
+        </body>
+        <body name="light_body2" pos="-0.2 -0.2 0.3" euler="1.57 -1.57 0">
+             <light name="light2" mode="fixed" directional="true" active="true" castshadow="true"/>
+        </body>
+        <body name="light_body3" pos="0.2 -0.2 0.3" euler="-1.57 -1.57 0">
+             <light name="light3" mode="fixed" directional="true" active="true" castshadow="true"/>
+        </body>
+        <body name="light_body4" pos="-0.2 0.2 0.3" euler="1.57 1.57 0">
+             <light name="light4" mode="fixed" directional="true" active="true" castshadow="true"/>
+        </body> -->
+    </worldbody>
+
+    <sensor>
+        <touch name="finger1_sensor" site="finger1_surf"/>
+        <touch name="finger2_sensor" site="finger2_surf"/>
+        <framepos name="object0_sensor" objname="object0" objtype="body"/>
+        <framepos name="object1_sensor" objname="object1" objtype="body"/>
+        <framepos name="object2_sensor" objname="object2" objtype="body"/>
+    </sensor>
+    <worldbody>
+        <body name="object0" pos="-0.1 -0.1 0">
+            <joint type="free"/>
+            <geom conaffinity="7" contype="7" friction="1.0 0.01 0.0002" mass="0.5" rgba="1.0 1.0 0.03129898925852309 1" size="0.03 0.015 0.12" type="box"/>
+        </body>
+        <body name="object1" pos="0 -0.1 0">
+            <joint type="free"/>
+            <geom conaffinity="7" contype="7" friction="1.0 0.01 0.0002" mass="0.5" rgba="1 0 0 1" size="0.03 0.015 0.12" type="box"/>
+        </body>
+        <body name="object2" pos="0.1 -0.1 0">
+            <joint type="free"/>
+            <geom conaffinity="7" contype="7" friction="1.0 0.01 0.0002" mass="0.5" rgba="1.0 1.0 0.04646328045361639 1" size="0.03 0.015 0.12" type="box"/>
+        </body>
+    </worldbody>
+
+    <actuator>
+        <position joint="slide_x" ctrllimited="false" kp="200"/>
+        <position joint="slide_y" ctrllimited="false" kp="200"/>
+        <!--<position joint="slide_x" ctrllimited="false" kp="0.8"/>-->
+        <!--<position joint="slide_y" ctrllimited="false" kp="0.8"/>-->
+
+        <!--<general joint="slide_z" gaintype="fixed" dyntype="none" dynprm="1 0 0" gainprm ="30 0 0" biastype="affine" biasprm="295.869 0 -50"/>-->
+        <general joint="slide_z" gaintype="fixed" dyntype="none" dynprm="1 0 0" gainprm ="100 0 0" biastype="affine" biasprm="10 -100 -4"/>
+
+        <position joint="hinge_z" ctrllimited="false" kp="300"/>
+
+        <position joint="j_finger1" ctrllimited="true" ctrlrange = "0 0.8" kp="10000"/>
+    </actuator>
+
+
+    <equality>
+        <joint joint1="j_finger1" joint2="j_finger2" polycoef="0 -1 0 0 0" />
+    </equality>
+
+</mujoco>
