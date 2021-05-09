@@ -1,4 +1,18 @@
-# Description
+# Recovery RL: Safe Reinforcement Learning with Learned Recovery Zones
+------------
+
+<p align=center>
+  <img src="img/recovery-rl-simple_website.png" width=800>
+  <img src="img/domains_website.png" width=800>
+</p>
+
+<p align="center">
+  <a href="https://arxiv.org/pdf/2010.15920.pdf">View on ArXiv</a>
+  |
+  <a href="https://sites.google.com/berkeley.edu/recovery-rl/">View website</a>
+</p>
+
+# Installation and Setup
 ------------
 Implementation of  <a href="https://arxiv.org/pdf/2010.15920.pdf">Recovery RL: Safe Reinforcement Learning with Learned Recovery Zones</a>. The SAC code is built 
 on top of the Pytorch implementation of Soft Actor Critic from <a href="https://github.com/pranz24/pytorch-soft-actor-critic">pytorch-soft-actor-critic</a>. For the 
@@ -50,4 +64,4 @@ Ablations and Sensitivity Experiments:
 
 # Plotting Results
 ------------
-(1) Update PLOT_TYPE on the top of the file. Use 'ratio' to replicate the main plots in the paper, 'success' to only visualize cumulative tasks succcesses, and 'violation' to only visualize cumulative task successes. The 'PR' option can be used to replicate the sensitivity experiments plot in the paper while the 'reward' option can be used to replicate the learning curves in the supplementary material. To plot results, update the experiment name and log directory at the bottom of the file and run `python plotting/plot_runs.py`
+Update PLOT_TYPE on the top of the file. Use 'ratio' to replicate the main plots in the paper, 'success' to only visualize cumulative tasks succcesses, and 'violation' to only visualize cumulative task successes. The 'PR' option can be used to replicate the sensitivity experiments plot in the paper while the 'reward' option can be used to replicate the learning curves in the supplementary material. To plot results, update the experiment name and log directory at the bottom of the file and run `python plotting/plot_runs.py`
