@@ -116,7 +116,8 @@ class ObjExtraction(BaseMujocoEnv):
             "reward": reward,
             "state": position,
             "next_state": self.position,
-            "action": action
+            "action": action,
+            "success": reward>-0.5
         }
 
         if self.gt_state:

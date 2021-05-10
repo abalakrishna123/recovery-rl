@@ -75,7 +75,7 @@ class Experiment:
         self.viol_and_no_recovery = 0
         # Get demos
         self.task_demos = self.exp_cfg.task_demos
-        self.constraint_demo_data, self.task_demo_data, self.obs_seqs, self.ac_seqs, self.constraint_seqs = self.get_constraint_demos(
+        self.constraint_demo_data, self.task_demo_data, self.obs_seqs, self.ac_seqs, self.constraint_seqs = self.get_offline_data(
         )
 
         # Get multiplier schedule for RSPO
@@ -175,7 +175,7 @@ class Experiment:
                     tmp_env=make_env(self.exp_cfg.env_name))
         return agent
 
-    def get_constraint_demos(self):
+    def get_offline_data(self):
         # Get demonstrations
         task_demo_data = None
         obs_seqs = []
@@ -462,12 +462,7 @@ class Experiment:
                 self.viol_and_recovery += 1
             else:
                 self.viol_and_no_recovery += 1
-        if "extraction" in self.exp_cfg.env_name and info['reward'] > -0.5:
-            self.num_successes += 1
-        elif "navigation" in self.exp_cfg.env_name and info['reward'] > -4:
-            self.num_successes += 1
-        elif "maze" in self.exp_cfg.env_name and info['reward'] > -0.03:
-            self.num_successes += 1
+        self.num_successes += int(info['success'])
 
         # Update recovery policy using online data
         if self.exp_cfg.use_recovery and not self.exp_cfg.disable_online_updates:

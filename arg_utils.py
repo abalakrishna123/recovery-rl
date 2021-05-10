@@ -1,7 +1,7 @@
 import argparse
 '''
 Util to compile command line arguments for core script to run experiements
-for Recovery RL (main.py)
+for Recovery RL (rrl_main.py)
 '''
 
 

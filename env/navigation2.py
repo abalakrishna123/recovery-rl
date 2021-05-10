@@ -83,7 +83,8 @@ class Navigation2(Env, utils.EzPickle):
             "reward": cur_cost,
             "state": old_state,
             "next_state": next_state,
-            "action": a
+            "action": a,
+            "success": reward>-4
         }
 
     def reset(self):

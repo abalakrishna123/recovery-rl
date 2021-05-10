@@ -191,7 +191,8 @@ class MazeImageNavigation(Env, utils.EzPickle):
             "reward": reward,
             "state": cur_obs,
             "next_state": obs,
-            "action": action
+            "action": action,
+            "success": reward>-0.03
         }
 
         return obs, reward, self.done, info
