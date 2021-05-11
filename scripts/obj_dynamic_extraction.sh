@@ -6,7 +6,7 @@
 for i in {1..10}
 do
 	echo "RRL MF Run $i"
-	python -m rrl_main --cuda --env-name obj_dynamic_extraction --task_demos --tau 0.0002 --replay_size 100000 --num_task_transitions 1000 --use_recovery --gamma_safe 0.85 --eps_safe 0.25 --ddpg_recovery --pos_fraction 0.3 --num_unsafe_transitions 20000  --logdir obj_dynamic_extraction --logdir_suffix RRL_MF --num_eps 5000 --num_unsafe_transitions 20000 --seed $i
+	python -m rrl_main --cuda --env-name obj_dynamic_extraction --task_demos --tau 0.0002 --replay_size 100000 --num_task_transitions 1000 --use_recovery --gamma_safe 0.85 --eps_safe 0.25 --MF_recovery --pos_fraction 0.3 --num_unsafe_transitions 20000  --logdir obj_dynamic_extraction --logdir_suffix RRL_MF --num_eps 5000 --num_unsafe_transitions 20000 --seed $i
 done
 
 # Recovery RL (model-based recovery)

@@ -145,9 +145,9 @@ def get_args():
                         help='use recovery policy')
 
     # Recovery RL MF Recovery
-    parser.add_argument('--ddpg_recovery',
+    parser.add_argument('--MF_recovery',
                         action='store_true',
-                        help='DDPG recovery policy')
+                        help='model free recovery policy')
     parser.add_argument('--Q_sampling_recovery',
                         action='store_true',
                         help='sample actions over Qrisk for recovery')

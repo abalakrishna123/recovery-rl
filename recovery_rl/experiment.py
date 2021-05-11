@@ -91,7 +91,7 @@ class Experiment:
         torch.manual_seed(self.exp_cfg.seed)
         np.random.seed(self.exp_cfg.seed)
         if self.exp_cfg.use_recovery and not (
-                self.exp_cfg.ddpg_recovery
+                self.exp_cfg.MF_recovery
                 or self.exp_cfg.Q_sampling_recovery):
             register_env(self.exp_cfg.env_name)
             cfg = recovery_config_setup(self.exp_cfg, self.logdir)
@@ -163,7 +163,7 @@ class Experiment:
         agent = self.agent_setup(env)
         self.agent = agent
         if self.exp_cfg.use_recovery and not (
-                self.exp_cfg.ddpg_recovery
+                self.exp_cfg.MF_recovery
                 or self.exp_cfg.Q_sampling_recovery):
             recovery_policy.update_value_func(agent.safety_critic)
 
@@ -298,7 +298,7 @@ class Experiment:
                                    len(self.constraint_demo_data)))
 
             # Train PETS recovery policy
-            if not (self.exp_cfg.ddpg_recovery
+            if not (self.exp_cfg.MF_recovery
                     or self.exp_cfg.Q_sampling_recovery
                     or self.exp_cfg.DGD_constraints or self.exp_cfg.RCPO):
                 self.train_MB_recovery(demo_data_states,
@@ -472,7 +472,7 @@ class Experiment:
                 'constraint': np.array(ep_constraints)
             })
             if i_episode % self.exp_cfg.recovery_policy_update_freq == 0 and not (
-                    self.exp_cfg.ddpg_recovery
+                    self.exp_cfg.MF_recovery
                     or self.exp_cfg.Q_sampling_recovery
                     or self.exp_cfg.DGD_constraints):
                 if not self.exp_cfg.vismpc_recovery:
@@ -571,7 +571,7 @@ class Experiment:
 
         if recovery_thresh(state, action):
             recovery = True
-            if self.exp_cfg.ddpg_recovery or self.exp_cfg.Q_sampling_recovery:
+            if self.exp_cfg.MF_recovery or self.exp_cfg.Q_sampling_recovery:
                 real_action = self.agent.safety_critic.select_action(state)
             else:
                 real_action = self.recovery_policy.act(state, 0)

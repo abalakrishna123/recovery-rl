@@ -80,7 +80,7 @@ class QRiskWrapper:
 
         self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
         self.pos_fraction = args.pos_fraction if args.pos_fraction >= 0 else None
-        self.ddpg_recovery = args.ddpg_recovery
+        self.MF_recovery = args.MF_recovery
         self.Q_sampling_recovery = args.Q_sampling_recovery
         self.tmp_env = tmp_env
         self.eps_safe = args.eps_safe
@@ -96,7 +96,7 @@ class QRiskWrapper:
                           lr=None,
                           batch_size=None,
                           training_iterations=3000,
-                          plot=1):
+                          plot=False):
         '''
         Trains safety critic Q_risk and model-free recovery policy which performs
         gradient ascent on the safety critic
@@ -156,7 +156,7 @@ class QRiskWrapper:
         (qf1_loss + qf2_loss).backward()
         self.safety_critic_optim.step()
 
-        if self.ddpg_recovery:
+        if self.MF_recovery:
             pi, log_pi, _ = self.policy.sample(state_batch)
             qf1_pi, qf2_pi = self.safety_critic(state_batch, pi)
             max_sqf_pi = torch.max(qf1_pi, qf2_pi)
@@ -174,8 +174,6 @@ class QRiskWrapper:
         plot_interval = 1000
         if self.env_name == 'image_maze':
             plot_interval = 29000
-
-        plot = False
 
         if plot and self.updates % 1000 == 0:
             if self.env_name in ['simplepointbot0', 'simplepointbot1', 'maze']:
@@ -216,7 +214,7 @@ class QRiskWrapper:
                 action
         '''
         state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
-        if self.ddpg_recovery:
+        if self.MF_recovery:
             if eval is False:
                 action, _, _ = self.policy.sample(state)
             else:

@@ -4,7 +4,7 @@
 for i in {1..10}
 do
 	echo "RRL MF Run $i"
-	python -m rrl_main --cuda --env-name maze --use_recovery --ddpg_recovery --recovery_policy_update_freq 5 --gamma_safe 0.5 --eps_safe 0.15 --pos_fraction=0.3 --logdir maze --logdir_suffix RRL_MF --num_eps 500 --seed $i
+	python -m rrl_main --cuda --env-name maze --use_recovery --MF_recovery --gamma_safe 0.5 --eps_safe 0.15 --pos_fraction=0.3 --logdir maze --logdir_suffix RRL_MF --num_eps 500 --seed $i
 done
 
 # Recovery RL (model-based recovery)
