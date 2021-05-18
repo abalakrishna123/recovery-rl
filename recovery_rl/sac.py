@@ -127,7 +127,6 @@ class SAC(object):
                                           action_space,
                                           args.hidden_size,
                                           logdir,
-                                          action_space,
                                           args,
                                           tmp_env=tmp_env)
 

@@ -9,7 +9,6 @@ import torch
 import moviepy.editor as mpy
 import cv2
 from torch import nn, optim
-from dotmap import DotMap
 
 from recovery_rl.sac import SAC
 from recovery_rl.replay_memory import ReplayMemory, ConstraintReplayMemory
@@ -293,7 +292,6 @@ class Experiment:
                 self.agent.safety_critic.update_parameters(
                     memory=self.recovery_memory,
                     policy=self.agent.policy,
-                    critic=self.agent.critic,
                     batch_size=min(self.exp_cfg.batch_size,
                                    len(self.constraint_demo_data)))
 
@@ -333,7 +331,6 @@ class Experiment:
                 self.agent.safety_critic.update_parameters(
                     memory=self.recovery_memory,
                     policy=self.agent.policy,
-                    critic=self.agent.critic,
                     batch_size=min(self.exp_cfg.batch_size,
                                    len(self.constraint_demo_data)))
 
@@ -414,7 +411,6 @@ class Experiment:
                         self.agent.safety_critic.update_parameters(
                             memory=self.recovery_memory,
                             policy=self.agent.policy,
-                            critic=self.agent.critic,
                             batch_size=self.exp_cfg.batch_size,
                             plot=0)
                     self.updates += 1

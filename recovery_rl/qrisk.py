@@ -1,19 +1,15 @@
 import os
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
-from PIL import Image
 import os.path as osp
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.optim import Adam
-from dotmap import DotMap
 import cv2
 
 from recovery_rl.utils import soft_update, hard_update
-from recovery_rl.model import GaussianPolicy, QNetwork, DeterministicPolicy, QNetworkCNN, \
-    GaussianPolicyCNN, QNetworkConstraint, QNetworkConstraintCNN, DeterministicPolicyCNN, \
-    StochasticPolicy, StochasticPolicyCNN
+from recovery_rl.model import QNetworkConstraint, QNetworkConstraintCNN, StochasticPolicy, StochasticPolicyCNN
 
 
 # Process observation for CNN
@@ -28,7 +24,7 @@ Wrapper for training, querying, and visualizing Q_risk for Recovery RL
 
 
 class QRiskWrapper:
-    def __init__(self, obs_space, ac_space, hidden_size, logdir, action_space,
+    def __init__(self, obs_space, ac_space, hidden_size, logdir,
                  args, tmp_env):
         self.env_name = args.env_name
         self.logdir = logdir
@@ -72,19 +68,17 @@ class QRiskWrapper:
         if not self.images:
             self.policy = StochasticPolicy(obs_space.shape[0],
                                               ac_space.shape[0], hidden_size,
-                                              action_space).to(self.device)
+                                              ac_space).to(self.device)
         else:
             self.policy = StochasticPolicyCNN(obs_space, ac_space.shape[0],
                                                  hidden_size, args.env_name,
-                                                 action_space).to(self.device)
+                                                 ac_space).to(self.device)
 
         self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
         self.pos_fraction = args.pos_fraction if args.pos_fraction >= 0 else None
         self.MF_recovery = args.MF_recovery
         self.Q_sampling_recovery = args.Q_sampling_recovery
         self.tmp_env = tmp_env
-        self.eps_safe = args.eps_safe
-        self.alpha = args.alpha
 
         if args.env_name == 'maze':
             self.tmp_env.reset(pos=(12, 12))
@@ -92,10 +86,7 @@ class QRiskWrapper:
     def update_parameters(self,
                           memory=None,
                           policy=None,
-                          critic=None,
-                          lr=None,
                           batch_size=None,
-                          training_iterations=3000,
                           plot=False):
         '''
         Trains safety critic Q_risk and model-free recovery policy which performs
