@@ -33,7 +33,7 @@ def clip_target_qpos(target, lb, ub):
 
 class ObjExtraction(BaseMujocoEnv):
     def __init__(self):
-        parent_params = super()._default_hparams()
+        parent_params = {'viewer_image_height': 480, 'viewer_image_width': 640, 'ncam': 1}
         envs_folder = os.path.dirname(os.path.abspath(__file__))
         self.reset_xml = os.path.join(envs_folder, 'assets/shelf.xml')
         super().__init__(self.reset_xml, parent_params)

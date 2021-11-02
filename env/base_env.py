@@ -5,7 +5,6 @@ https://github.com/SudeepDasari/visual_foresight
 
 import numpy as np
 import random
-from tensorflow.contrib.training import HParams
 from gym import Env
 from gym import utils
 
@@ -28,9 +27,6 @@ class BaseEnv(Env, utils.EzPickle):
         :return: Current environment observation dict
         """
         raise NotImplementedError
-
-    def _default_hparams(self):
-        return HParams()
 
     def reset(self):
         """

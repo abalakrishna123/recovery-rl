@@ -10,8 +10,8 @@ from .base_env import BaseEnv
 
 class BaseMujocoEnv(BaseEnv):
     def __init__(self, model_path, _hp):
-        self._frame_height = _hp.viewer_image_height
-        self._frame_width = _hp.viewer_image_width
+        self._frame_height = _hp['viewer_image_height']
+        self._frame_width = _hp['viewer_image_width']
 
         self._reset_sim(model_path)
 
@@ -21,7 +21,7 @@ class BaseMujocoEnv(BaseEnv):
         self._goal_obj_pose = None
         self._goaldistances = []
 
-        self._ncam = _hp.ncam
+        self._ncam = _hp['ncam']
         if self._ncam == 2:
             self.cameras = ['maincam', 'leftcam']
         elif self._ncam == 1:
@@ -30,15 +30,6 @@ class BaseMujocoEnv(BaseEnv):
             raise ValueError
 
         self._last_obs = None
-        self._hp = _hp
-
-    def _default_hparams(self):
-        parent_params = super()._default_hparams()
-        parent_params.add_hparam('viewer_image_height', 480)
-        parent_params.add_hparam('viewer_image_width', 640)
-        parent_params.add_hparam('ncam', 1)
-
-        return parent_params
 
     def set_goal_obj_pose(self, pose):
         self._goal_obj_pose = pose
