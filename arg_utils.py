@@ -213,8 +213,7 @@ def get_args():
     # Safety Editor
     parser.add_argument(
         '--use_safety_editor',
-        type=bool,
-        default=False,
+        action='store_true',
         help='whether to use the safety editor')
 
     parser.add_argument(

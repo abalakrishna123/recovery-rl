@@ -90,9 +90,12 @@ class QRiskWrapper:
                         state_batch,
                         actions,
                         task_actions):
-        task_q_values = critic(state_batch, task_actions)
-        risk_q_values = critic(state_batch, actions)
-        return torch.max(0, task_q_values - risk_q_values)
+        task_q_values1, task_q_values2 = critic(state_batch, task_actions)
+        editor_q_values1, editor_q_values2 = critic(state_batch, actions)
+        task_q_values = torch.min(task_q_values1, task_q_values2)
+        editor_q_values = torch.min(editor_q_values1, editor_q_values2)
+
+        return torch.max(torch.zeros_like(task_q_values), task_q_values - editor_q_values)
 
     def update_parameters(self,
                           memory=None,
@@ -165,8 +168,8 @@ class QRiskWrapper:
             max_sqf_pi = torch.max(qf1_pi, qf2_pi)
             policy_loss = max_sqf_pi.mean()
             # Rn policy loss minimizes average safety critic
-            task_policy_actions = policy.sample(state_batch)
-            ac_distance = self.action_distance(critic, state_batch, pi, task_policy_actions)
+            task_policy_actions, _, _ = policy.sample(state_batch)
+            ac_distance = self.action_distance(critic, state_batch, pi, task_policy_actions).mean()
             if self.use_safety_editor:
                 policy_loss += self.safety_editor_lambda * ac_distance
             self.policy_optim.zero_grad()

@@ -25,7 +25,7 @@ done
 for i in {1..10}
 do
 	echo "Safety Editor Run $i"
-	python -m rrl_main --env-name navigation1 --cuda --logdir navigation1 --logdir_suffix safety_editor --num_eps 400 --num_unsafe_transitions 20000 --use_safety_editor --safety_editor_lambda 0.5 --seed $i
+	python -m rrl_main --env-name navigation1 --cuda --logdir navigation1 --logdir_suffix safety_editor --num_eps 400 --num_unsafe_transitions 20000 --use_safety_editor --safety_editor_lambda 0.5 --MF_recovery --use_recovery --seed $i
 done
 
 # Lagrangian Relaxation

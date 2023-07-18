@@ -129,7 +129,6 @@ class SAC(object):
                                           logdir,
                                           args,
                                           tmp_env=tmp_env)
-        self.safety_critic.set_critic(self.critic)
 
     def select_action(self, state, eval=False):
         '''

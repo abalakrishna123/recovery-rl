@@ -574,9 +574,14 @@ class Experiment:
                 real_action = self.agent.safety_critic.select_action(state)
             else:
                 real_action = self.recovery_policy.act(state, 0)
-        elif self.exp_cfg.use_safety_editor:
-            real_action = self.agent.safety_critic.select_action(state)
         else:
             recovery = False
             real_action = np.copy(action)
+
+        # If using the safety editor, always just sample from recovery policy
+        if self.exp_cfg.use_safety_editor:
+            if self.exp_cfg.MF_recovery or self.exp_cfg.Q_sampling_recovery:
+                real_action = self.agent.safety_critic.select_action(state)
+            else:
+                real_action = self.recovery_policy.act(state, 0)                
         return action, real_action, recovery
