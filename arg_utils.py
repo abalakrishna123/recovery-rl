@@ -254,4 +254,8 @@ def get_args():
                         default=0.01,
                         help='penalty term for RCPO (default: 0.01)')
 
+    # Conservative safety critics for exploration
+    parser.add_argument('--conservative-safety-critic',
+                        action='store_true', help='Conservative Safety Critics for Exploration')
+
     return parser.parse_args()

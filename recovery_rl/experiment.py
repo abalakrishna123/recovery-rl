@@ -155,7 +155,7 @@ class Experiment:
             recovery_policy = None
             register_env(self.exp_cfg.env_name)
             env = make_env(self.exp_cfg.env_name)
-        self.env = env 
+        self.env = env
         self.recovery_policy = recovery_policy
         self.env.seed(self.exp_cfg.seed)
         self.env.action_space.seed(self.exp_cfg.seed)
@@ -393,96 +393,114 @@ class Experiment:
             print("SEED: ", self.exp_cfg.seed)
             print("LOGDIR: ", self.logdir)
 
-        while not done:
-            if len(self.memory) > self.exp_cfg.batch_size:
-                # Number of updates per step in environment
-                for i in range(self.exp_cfg.updates_per_step):
-                    # Update parameters of all the networks
-                    critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = self.agent.update_parameters(
-                        self.memory,
-                        min(self.exp_cfg.batch_size, len(self.memory)),
-                        self.updates,
-                        safety_critic=self.agent.safety_critic,
-                        nu=self.nu_schedule(i_episode))
-                    if not self.exp_cfg.disable_online_updates and len(
-                            self.recovery_memory) > self.exp_cfg.batch_size and (
-                            self.num_viols + self.num_constraint_violations
-                    ) / self.exp_cfg.batch_size > self.exp_cfg.pos_fraction:
-                        self.agent.safety_critic.update_parameters(
-                            memory=self.recovery_memory,
-                            policy=self.agent.policy,
-                            batch_size=self.exp_cfg.batch_size,
-                            plot=0)
-                    self.updates += 1
 
-            # Get action, execute action, and compile step results
-            action, real_action, recovery_used = self.get_action(state)
-            next_state, reward, done, info = self.env.step(real_action)
-            info['recovery'] = recovery_used
+        def run_update(avg_violations):
+            for i in range(self.exp_cfg.updates_per_step):
+                # Update parameters of all the networks
+                losses = self.agent.update_parameters(
+                    self.memory,
+                    min(self.exp_cfg.batch_size, len(self.memory)),
+                    self.updates,
+                    avg_violations,
+                    safety_critic=self.agent.safety_critic,
+                    nu=self.nu_schedule(i_episode))
+                if not self.exp_cfg.disable_online_updates and len(
+                        self.recovery_memory) > self.exp_cfg.batch_size and (
+                        self.num_viols + self.num_constraint_violations
+                ) / self.exp_cfg.batch_size > self.exp_cfg.pos_fraction:
+                    self.agent.safety_critic.update_parameters(
+                        memory=self.recovery_memory,
+                        policy=self.agent.policy,
+                        batch_size=self.exp_cfg.batch_size,
+                        plot=0)
+                self.updates += 1
 
-            if self.exp_cfg.cnn:
-                next_state = process_obs(next_state, self.exp_cfg.env_name)
+                print(losses)
 
-            train_rollout_info.append(info)
-            episode_steps += 1
-            episode_reward += reward
-            self.total_numsteps += 1
+        num_eps = 1 if not self.exp_cfg.conservative_safety_critic else self.exp_cfg.num_episode_per_step
 
-            if info['constraint']:
-                reward -= self.exp_cfg.constraint_reward_penalty
+        prev_avg_viols = float(self.num_viols) / num_eps
+        self.num_viols = 0
+        for _ in range(num_eps):
+            while not done:
+                if len(self.memory) > self.exp_cfg.batch_size and not self.exp_cfg.conservative_safety_critic:
+                    # Number of updates per step in environment
+                    run_update(prev_avg_viols)
 
-            mask = float(not done)
-            done = done or episode_steps == self.env._max_episode_steps
+                eps = None
+                if self.exp_cfg.conservative_safety_critic:
+                    eps = (1 - self.exp_cfg.gamma_safe) * (self.exp_cfg.eps_safe - prev_avg_viols)
+                # Get action, execute action, and compile step results
+                action, real_action, recovery_used = self.get_action(state, thres=eps)
+                next_state, reward, done, info = self.env.step(real_action)
+                info['recovery'] = recovery_used
 
-            # Update buffers
-            if not self.exp_cfg.disable_action_relabeling:
-                self.memory.push(state, action, reward, next_state, mask)
-            else:
-                self.memory.push(state, real_action, reward, next_state, mask)
+                if self.exp_cfg.cnn:
+                    next_state = process_obs(next_state, self.exp_cfg.env_name)
 
-            if self.exp_cfg.use_recovery or self.exp_cfg.DGD_constraints or self.exp_cfg.RCPO:
-                self.recovery_memory.push(state, real_action,
-                                          info['constraint'], next_state, mask)
-                if recovery_used and self.exp_cfg.add_both_transitions:
-                    self.memory.push(state, real_action, reward, next_state,
-                                     mask)
-            state = next_state
-            ep_states.append(state)
-            ep_actions.append(real_action)
-            ep_constraints.append([info['constraint']])
+                train_rollout_info.append(info)
+                episode_steps += 1
+                episode_reward += reward
+                self.total_numsteps += 1
 
-        # Get success/violation stats
-        if info['constraint']:
-            self.num_viols += 1
-            if info['recovery']:
-                self.viol_and_recovery += 1
-            else:
-                self.viol_and_no_recovery += 1
-        self.num_successes += int(info['success'])
+                if info['constraint']:
+                    reward -= self.exp_cfg.constraint_reward_penalty
 
-        # Update recovery policy using online data
-        if self.exp_cfg.use_recovery and not self.exp_cfg.disable_online_updates:
-            self.all_ep_data.append({
-                'obs': np.array(ep_states),
-                'ac': np.array(ep_actions),
-                'constraint': np.array(ep_constraints)
-            })
-            if i_episode % self.exp_cfg.recovery_policy_update_freq == 0 and not (
-                    self.exp_cfg.MF_recovery
-                    or self.exp_cfg.Q_sampling_recovery
-                    or self.exp_cfg.DGD_constraints):
-                if not self.exp_cfg.vismpc_recovery:
-                    self.train_MB_recovery(
-                        [ep_data['obs'] for ep_data in self.all_ep_data],
-                        [ep_data['ac'] for ep_data in self.all_ep_data])
-                    self.all_ep_data = []
+                mask = float(not done)
+                done = done or episode_steps == self.env._max_episode_steps
+
+                # Update buffers
+                if not self.exp_cfg.disable_action_relabeling:
+                    self.memory.push(state, action, reward, next_state, mask)
                 else:
-                    self.recovery_policy.train_online(i_episode)
+                    self.memory.push(state, real_action, reward, next_state, mask)
 
-        # Print performance stats
-        print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".
-              format(i_episode, self.total_numsteps, episode_steps,
-                     round(episode_reward, 2)))
+                if self.exp_cfg.use_recovery or self.exp_cfg.DGD_constraints or self.exp_cfg.RCPO:
+                    self.recovery_memory.push(state, real_action,
+                                              info['constraint'], next_state, mask)
+                    if recovery_used and self.exp_cfg.add_both_transitions:
+                        self.memory.push(state, real_action, reward, next_state,
+                                         mask)
+                state = next_state
+                ep_states.append(state)
+                ep_actions.append(real_action)
+                ep_constraints.append([info['constraint']])
+
+            # Get success/violation stats
+            if info['constraint']:
+                self.num_viols += 1
+                if info['recovery']:
+                    self.viol_and_recovery += 1
+                else:
+                    self.viol_and_no_recovery += 1
+            self.num_successes += int(info['success'])
+
+            # Update recovery policy using online data
+            if self.exp_cfg.use_recovery and not self.exp_cfg.disable_online_updates:
+                self.all_ep_data.append({
+                    'obs': np.array(ep_states),
+                    'ac': np.array(ep_actions),
+                    'constraint': np.array(ep_constraints)
+                })
+                if i_episode % self.exp_cfg.recovery_policy_update_freq == 0 and not (
+                        self.exp_cfg.MF_recovery
+                        or self.exp_cfg.Q_sampling_recovery
+                        or self.exp_cfg.DGD_constraints):
+                    if not self.exp_cfg.vismpc_recovery:
+                        self.train_MB_recovery(
+                            [ep_data['obs'] for ep_data in self.all_ep_data],
+                            [ep_data['ac'] for ep_data in self.all_ep_data])
+                        self.all_ep_data = []
+                    else:
+                        self.recovery_policy.train_online(i_episode)
+
+            # Print performance stats
+            print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".
+                  format(i_episode, self.total_numsteps, episode_steps,
+                         round(episode_reward, 2)))
+
+        if self.exp_cfg.conservative_safety_critics:
+            run_update(prev_avg_viols)
 
         print("Num Violations So Far: %d" % self.num_viols)
         print("Violations with Recovery: %d" % self.viol_and_recovery)
@@ -543,16 +561,18 @@ class Experiment:
             pickle.dump(data, f)
 
 
-    def get_action(self, state, train=True):
+    def get_action(self, state, eps=None, train=True):
         def recovery_thresh(state, action):
-            if not self.exp_cfg.use_recovery:
+            if not self.exp_cfg.use_recovery and not self.exp_cfg.conservative_safety_critic:
                 return False
 
             critic_val = self.agent.safety_critic.get_value(
                 torchify(state).unsqueeze(0),
                 torchify(action).unsqueeze(0))
 
-            if critic_val > self.exp_cfg.eps_safe:
+            if eps is not None and critic_val > eps:
+                return True
+            if eps is None and critic_val > self.exp_cfg.eps_safe:
                 return True
             return False
 
