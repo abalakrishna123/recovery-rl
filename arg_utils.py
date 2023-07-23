@@ -257,5 +257,17 @@ def get_args():
     # Conservative safety critics for exploration
     parser.add_argument('--conservative-safety-critic',
                         action='store_true', help='Conservative Safety Critics for Exploration')
+    parser.add_argument('--num_episode_per_step', type=int, default=10,
+                       help='Number of episodes to run for each block of training updates')
+    parser.add_argument('--lam', type=float, default=10.0, #TODO: the init value is not given in the paper
+                        help='Lambda for mixing value and risk')
+    parser.add_argument('--eta', type=float, default=4e-2,
+                        help='the learning rate for the dual param lambda')
+    parser.add_argument('--trust-region', type=float, default=0.01,
+                        help='the KL divergence for the trust region constraint')
+    parser.add_argument('--beta-init', type=float, default=0.7,
+                        help='the initial beta to use for line search for KL constrain satisfaction')
+    parser.add_argument('--conservative-critic-update-l', type=int, default=20,
+                        help='number of iterations to try to satisfy the kl constraint')
 
     return parser.parse_args()

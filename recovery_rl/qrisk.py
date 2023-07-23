@@ -26,9 +26,11 @@ Wrapper for training, querying, and visualizing Q_risk for Recovery RL
 class QRiskWrapper:
     def __init__(self, obs_space, ac_space, hidden_size, logdir,
                  args, tmp_env):
+
+        self.conservative_safety_critics = args.conservative_safety_critic
         self.env_name = args.env_name
         self.logdir = logdir
-        self.device = torch.device("cuda" if args.cuda else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.ac_space = ac_space
         self.images = args.cnn
         self.encoding = args.vismpc_recovery
@@ -65,16 +67,17 @@ class QRiskWrapper:
         self.updates = 0
         self.target_update_interval = args.target_update_interval
         self.torchify = lambda x: torch.FloatTensor(x).to(self.device)
-        if not self.images:
-            self.policy = StochasticPolicy(obs_space.shape[0],
-                                              ac_space.shape[0], hidden_size,
-                                              ac_space).to(self.device)
-        else:
-            self.policy = StochasticPolicyCNN(obs_space, ac_space.shape[0],
-                                                 hidden_size, args.env_name,
-                                                 ac_space).to(self.device)
+        if not self.conservative_safety_critics:
+            if not self.images:
+                self.policy = StochasticPolicy(obs_space.shape[0],
+                                               ac_space.shape[0], hidden_size,
+                                               ac_space).to(self.device)
+            else:
+                self.policy = StochasticPolicyCNN(obs_space, ac_space.shape[0],
+                                                  hidden_size, args.env_name,
+                                                  ac_space).to(self.device)
 
-        self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
+            self.policy_optim = Adam(self.policy.parameters(), lr=args.lr)
         self.pos_fraction = args.pos_fraction if args.pos_fraction >= 0 else None
         self.MF_recovery = args.MF_recovery
         self.Q_sampling_recovery = args.Q_sampling_recovery
@@ -147,44 +150,46 @@ class QRiskWrapper:
         (qf1_loss + qf2_loss).backward()
         self.safety_critic_optim.step()
 
-        if self.MF_recovery:
-            pi, log_pi, _ = self.policy.sample(state_batch)
-            qf1_pi, qf2_pi = self.safety_critic(state_batch, pi)
-            max_sqf_pi = torch.max(qf1_pi, qf2_pi)
-            policy_loss = max_sqf_pi.mean()
+        if not self.conservative_safety_critics:
+            if self.MF_recovery:
+                pi, log_pi, _ = self.policy.sample(state_batch)
+                qf1_pi, qf2_pi = self.safety_critic(state_batch, pi)
+                max_sqf_pi = torch.max(qf1_pi, qf2_pi)
+                policy_loss = max_sqf_pi.mean()
 
-            self.policy_optim.zero_grad()
-            policy_loss.backward()
-            self.policy_optim.step()
+                self.policy_optim.zero_grad()
+                policy_loss.backward()
+                self.policy_optim.step()
 
         if self.updates % self.target_update_interval == 0:
             soft_update(self.safety_critic_target, self.safety_critic,
                         self.tau)
         self.updates += 1
 
-        plot_interval = 1000
-        if self.env_name == 'image_maze':
-            plot_interval = 29000
+        if not self.conservative_safety_critics:
+            plot_interval = 1000
+            if self.env_name == 'image_maze':
+                plot_interval = 29000
 
-        if plot and self.updates % 1000 == 0:
-            if self.env_name in ['simplepointbot0', 'simplepointbot1', 'maze']:
-                self.plot(policy, self.updates, [.1, 0], "right")
-                self.plot(policy, self.updates, [-.1, 0], "left")
-                self.plot(policy, self.updates, [0, .1], "up")
-                self.plot(policy, self.updates, [0, -.1], "down")
-            elif self.env_name == 'image_maze':
-                self.plot(policy, self.updates, [.3, 0], "right")
-                self.plot(policy, self.updates, [-.3, 0], "left")
-                self.plot(policy, self.updates, [0, .3], "up")
-                self.plot(policy, self.updates, [0, -.3], "down")
-            else:
-                raise NotImplementedError(
-                    "Unsupported environment for plotting")
+            if plot and self.updates % 1000 == 0:
+                if self.env_name in ['simplepointbot0', 'simplepointbot1', 'maze']:
+                    self.plot(policy, self.updates, [.1, 0], "right")
+                    self.plot(policy, self.updates, [-.1, 0], "left")
+                    self.plot(policy, self.updates, [0, .1], "up")
+                    self.plot(policy, self.updates, [0, -.1], "down")
+                elif self.env_name == 'image_maze':
+                    self.plot(policy, self.updates, [.3, 0], "right")
+                    self.plot(policy, self.updates, [-.3, 0], "left")
+                    self.plot(policy, self.updates, [0, .3], "up")
+                    self.plot(policy, self.updates, [0, -.3], "down")
+                else:
+                    raise NotImplementedError(
+                        "Unsupported environment for plotting")
 
     def get_value(self, states, actions, encoded=False):
         '''
             Arguments:
-                states, actions --> list of states and list of corresponding 
+                states, actions --> list of states and list of corresponding
                 actions to get Q_risk values for
             Returns: Q_risk(states, actions)
         '''
@@ -204,6 +209,7 @@ class QRiskWrapper:
             Returns:
                 action
         '''
+        assert not self.conservative_safety_critics, "No recovery policy with conservative safety critics"
         state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
         if self.MF_recovery:
             if eval is False:

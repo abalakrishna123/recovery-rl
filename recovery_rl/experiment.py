@@ -81,7 +81,7 @@ class Experiment:
         if self.exp_cfg.nu_schedule:
             self.nu_schedule = linear_schedule(self.exp_cfg.nu_start,
                                                self.exp_cfg.nu_end,
-                                               self.exp_cfg.num_eps)
+                                               self.exp_cfg.num_ep)
         else:
             self.nu_schedule = linear_schedule(self.exp_cfg.nu,
                                                self.exp_cfg.nu, 0)
@@ -431,7 +431,7 @@ class Experiment:
                 if self.exp_cfg.conservative_safety_critic:
                     eps = (1 - self.exp_cfg.gamma_safe) * (self.exp_cfg.eps_safe - prev_avg_viols)
                 # Get action, execute action, and compile step results
-                action, real_action, recovery_used = self.get_action(state, thres=eps)
+                action, real_action, recovery_used = self.get_action(state, eps=eps)
                 next_state, reward, done, info = self.env.step(real_action)
                 info['recovery'] = recovery_used
 
@@ -447,7 +447,6 @@ class Experiment:
                     reward -= self.exp_cfg.constraint_reward_penalty
 
                 mask = float(not done)
-                done = done or episode_steps == self.env._max_episode_steps
 
                 # Update buffers
                 if not self.exp_cfg.disable_action_relabeling:
@@ -499,7 +498,7 @@ class Experiment:
                   format(i_episode, self.total_numsteps, episode_steps,
                          round(episode_reward, 2)))
 
-        if self.exp_cfg.conservative_safety_critics:
+        if self.exp_cfg.conservative_safety_critic:
             run_update(prev_avg_viols)
 
         print("Num Violations So Far: %d" % self.num_viols)
@@ -570,6 +569,7 @@ class Experiment:
                 torchify(state).unsqueeze(0),
                 torchify(action).unsqueeze(0))
 
+            print(critic_val)
             if eps is not None and critic_val > eps:
                 return True
             if eps is None and critic_val > self.exp_cfg.eps_safe:
@@ -584,6 +584,16 @@ class Experiment:
         else:
             action = self.agent.select_action(
                 state, eval=True)  # Sample action from policy
+
+        if self.exp_cfg.conservative_safety_critic:
+            print("Searching for action", eps)
+            resample_count = 1
+            while recovery_thresh(state, action) and resample_count < 100:
+                #print("Resample action due to constraint violation")
+                action = self.agent.select_action(state, eval=not train)
+                resample_count += 1
+            print("Found action!")
+            return action, np.copy(action), False
 
         if recovery_thresh(state, action):
             recovery = True

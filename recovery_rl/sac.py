@@ -17,7 +17,8 @@ import cv2
 
 from recovery_rl.utils import soft_update, hard_update
 from recovery_rl.model import GaussianPolicy, QNetwork, DeterministicPolicy, QNetworkCNN, \
-    GaussianPolicyCNN, QNetworkConstraint, QNetworkConstraintCNN, DeterministicPolicyCNN
+    GaussianPolicyCNN, QNetworkConstraint, QNetworkConstraintCNN, DeterministicPolicyCNN, \
+    ValueNetwork, ValueNetworkCNN
 from recovery_rl.qrisk import QRiskWrapper
 
 
@@ -35,15 +36,19 @@ class SAC(object):
         self.gamma = args.gamma
         self.tau = args.tau
         self.alpha = args.alpha # 0.5   entropy term
+
+        self.conservative_safety_critics = args.conservative_safety_critic
         self.lam = args.lam # the lambda param to mix reward and risk
         self.eta = args.eta # 4e-2   the learning rate for the lambda
         self.trust_region = args.trust_region # 0.01   the policy trust region
+        self.beta_init = args.beta_init # 0.7 the initial beta for the trust region optimization
+        self.conservative_critic_update_l = args.conservative_critic_update_l # 20 the number of steps of line search
         self.env_name = args.env_name
         self.logdir = logdir
         self.policy_type = args.policy
         self.target_update_interval = args.target_update_interval
         self.automatic_entropy_tuning = args.automatic_entropy_tuning
-        self.device = torch.device("cuda" if args.cuda else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.updates = 0
         self.cnn = args.cnn
         if im_shape:
@@ -52,7 +57,7 @@ class SAC(object):
         # RRL specific parameters
         self.gamma_safe = args.gamma_safe
         self.eps_safe = args.eps_safe
-        # Parameters for comparisons
+        # Parameters for comparisonsp
         self.DGD_constraints = args.DGD_constraints
         self.nu = args.nu
         self.update_nu = args.update_nu
@@ -77,19 +82,21 @@ class SAC(object):
         critic_cls = QNetworkCNN if args.cnn else QNetwork
         value_cls = ValueNetworkCNN if args.cnn else ValueNetwork
 
-        self.critic = critic_cls(observation_space, action_space.shape[0],
+        print(observation_space)
+        print(dir(observation_space))
+        self.critic = critic_cls(observation_space.shape[0], action_space.shape[0],
                                  args.hidden_size, args.env_name).to(device=self.device)
-        self.critic_target = critic_cls(observation_space, action_space.shape[0],
+        self.critic_target = critic_cls(observation_space.shape[0], action_space.shape[0],
                                         args.hidden_size, args.env_name).to(device=self.device)
 
-        self.value_f = value_cls(observation_space, args.hidden_size, args.env_name).to(device=self.device)
-        self.value_f_target = value_cls(observation_space, args.hidden_size, args.env_name).to(device=self.device)
+        self.value_f = value_cls(observation_space.shape[0], args.hidden_size).to(device=self.device)
+        self.value_f_target = value_cls(observation_space.shape[0], args.hidden_size).to(device=self.device)
 
-        self.value_f_risk = value_cls(observation_space, args.hidden_size, args.env_name).to(device=self.device)
-        self.value_f_risk_target = value_cls(observation_space, args.hidden_size, args.env_name).to(device=self.device)
+        self.value_f_risk = value_cls(observation_space.shape[0], args.hidden_size).to(device=self.device)
+        self.value_f_risk_target = value_cls(observation_space.shape[0], args.hidden_size).to(device=self.device)
 
         self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)
-        self.value_optim = Adam(self.value_f.parameters() + self.value_f_risk.parameters(), lr=args.lr)
+        self.value_optim = Adam(list(self.value_f.parameters()) + list(self.value_f_risk.parameters()), lr=args.lr)
 
         hard_update(self.critic_target, self.critic)
         hard_update(self.value_f_target, self.value_f)
@@ -111,7 +118,7 @@ class SAC(object):
                                                 args.hidden_size,
                                                 args.env_name,
                                                 action_space).to(self.device)
-                 if self.conservative_safety_critics:
+                if self.conservative_safety_critics:
                     self.inner_pi = GaussianPolicyCNN(
                         observation_space,
                         action_space.shape[0],
@@ -147,9 +154,8 @@ class SAC(object):
         params = self.policy.parameters()
         if self.conservative_safety_critics:
             params = self.inner_pi.parameters()
+            hard_update(self.inner_pi, self.policy)
         self.policy_optim = Adam(params, lr=args.lr)
-
-        hard_update(self.inner_pi, self.pi)
 
         # Initialize safety critic
         self.safety_critic = QRiskWrapper(observation_space,
@@ -277,7 +283,8 @@ class SAC(object):
             pi_params_save = pi.get_weights()
 
             beta = self.beta_init # 0.7
-            for i in range(self.conservative_critic_update_l): # 20
+
+            for i in range(1, self.conservative_critic_update_l + 1): # 20
 
                 # From A.2 the modified advantage function
                 with torch.no_grad():
@@ -285,24 +292,40 @@ class SAC(object):
                     a_c = torch.max(*self.safety_critic(state_batch, action_batch)) - v_risk
                     a_hat =  a_r - self.lam / (1. - self.gamma_safe) * a_c
 
-                # eg. 52 (A.2)
-                p, log_p, _ = pi.sample(state_batch)
-                inner_pi_loss = (log_p * a_hat).mean()
-                grads = autograd.grad([inner_pi_loss], pi.paramters())
+                rnd = self.torchify(np.random.randn(*action_batch.shape))
 
                 # Backtracking search for beta to satisfy the constraint
                 # eq. 58 (A.2)
                 candidate_params = []
-                for g, param in zip(grads, pi.parameters()):
-                    info_mat = autograd.grad([g], [param])
-                    info_mat_inv = info_mat.inverse()
+
+                def inner_pi_loss_fn(*args):
+                    p, log_p, _ = pi.sample_from_weights(state_batch, rnd, *args)
+                    inner_pi_loss = (log_p * a_hat).mean()
+                    return inner_pi_loss
+
+                with torch.no_grad():
+                    jaccs = torch.autograd.functional.jacobian(inner_pi_loss_fn, tuple(pi.parameters()))
+                    info_mats = torch.autograd.functional.hessian(inner_pi_loss_fn, tuple(pi.parameters()))
+
+                print(grads[0])
+                print(jaccs[0])
+                print(state_batch)
+                print(len(grads), len(jaccs))
+                print("DONE")
+                exit()
+                for grad, info_path, param in zip(jaccs, info_mats, pi.parameters()):
+                    print(grad.shape, info_mat.shape, param.shape)
+                    info_mat_inv = info_mat.pinverse()
+                    print(grad.shape, info_mat.T.shape, grad.shape)
                     b = beta * torch.sqrt(
-                        2. * self.trust_region / g.T() * info_mat * g
+                        2. * self.trust_region / (grad @ info_mat.T @ grad + 1e-9)
                     )
-                    candidate_params.append(param + b * info_mat_inv * g)
+                    print(param.shape, b.shape, info_mat_inv.shape, grad.shape)
+                    candidate_params.append(param + (b @ info_mat_inv @ grad).view(*param.shape))
 
                 pi.set_weights(candidate_params)
-                kl = pi.kl_div(self.policy).mean()
+                with torch.no_grad():
+                    kl = pi.kl_div(state_batch, *self.policy(state_batch)).mean()
                 print("Kl div", kl)
                 if kl <= self.trust_region:
                     print(kl, self.trust_region)
@@ -318,6 +341,28 @@ class SAC(object):
                 hard_update(self.policy, pi)
 
             hard_update(self.inner_pi, self.policy)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
             policy_loss = v_loss
 
