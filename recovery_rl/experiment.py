@@ -379,13 +379,11 @@ class Experiment:
     def get_train_rollout(self, i_episode):
         episode_reward = 0
         episode_steps = 0
-        done = False
-        state = self.env.reset()
         if self.exp_cfg.cnn:
             state = process_obs(state, self.exp_cfg.env_name)
 
         train_rollout_info = []
-        ep_states = [state]
+        ep_states = []
         ep_actions = []
         ep_constraints = []
 
@@ -397,6 +395,7 @@ class Experiment:
         def run_update(avg_violations):
             for i in range(self.exp_cfg.updates_per_step):
                 # Update parameters of all the networks
+                print("Memory size: ", len(self.memory))
                 losses = self.agent.update_parameters(
                     self.memory,
                     min(self.exp_cfg.batch_size, len(self.memory)),
@@ -418,10 +417,13 @@ class Experiment:
                 print(losses)
 
         num_eps = 1 if not self.exp_cfg.conservative_safety_critic else self.exp_cfg.num_episode_per_step
-
+        assert num_eps > 1
         prev_avg_viols = float(self.num_viols) / num_eps
         self.num_viols = 0
-        for _ in range(num_eps):
+        for jj in range(num_eps):
+            done = False
+            state = self.env.reset()
+
             while not done:
                 if len(self.memory) > self.exp_cfg.batch_size and not self.exp_cfg.conservative_safety_critic:
                     # Number of updates per step in environment
@@ -495,10 +497,12 @@ class Experiment:
 
             # Print performance stats
             print("Episode: {}, total numsteps: {}, episode steps: {}, reward: {}".
-                  format(i_episode, self.total_numsteps, episode_steps,
+                  format(i_episode * num_eps + jj, self.total_numsteps, episode_steps,
                          round(episode_reward, 2)))
+            episode_reward = 0
+            episode_steps = 0
 
-        if self.exp_cfg.conservative_safety_critic:
+        if self.exp_cfg.conservative_safety_critic and len(self.memory) >= self.exp_cfg.batch_size:
             run_update(prev_avg_viols)
 
         print("Num Violations So Far: %d" % self.num_viols)
@@ -528,7 +532,6 @@ class Experiment:
                                                                  train=False)
             next_state, reward, done, info = self.env.step(real_action)  # Step
             info['recovery'] = recovery_used
-            done = done or episode_steps == self.env._max_episode_steps
 
             if 'maze' in self.exp_cfg.env_name:
                 im_list.append(self.env._get_obs(images=True))
@@ -569,7 +572,6 @@ class Experiment:
                 torchify(state).unsqueeze(0),
                 torchify(action).unsqueeze(0))
 
-            print(critic_val)
             if eps is not None and critic_val > eps:
                 return True
             if eps is None and critic_val > self.exp_cfg.eps_safe:
@@ -586,13 +588,11 @@ class Experiment:
                 state, eval=True)  # Sample action from policy
 
         if self.exp_cfg.conservative_safety_critic:
-            print("Searching for action", eps)
             resample_count = 1
             while recovery_thresh(state, action) and resample_count < 100:
                 #print("Resample action due to constraint violation")
                 action = self.agent.select_action(state, eval=not train)
                 resample_count += 1
-            print("Found action!")
             return action, np.copy(action), False
 
         if recovery_thresh(state, action):

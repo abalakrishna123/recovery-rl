@@ -82,8 +82,6 @@ class SAC(object):
         critic_cls = QNetworkCNN if args.cnn else QNetwork
         value_cls = ValueNetworkCNN if args.cnn else ValueNetwork
 
-        print(observation_space)
-        print(dir(observation_space))
         self.critic = critic_cls(observation_space.shape[0], action_space.shape[0],
                                  args.hidden_size, args.env_name).to(device=self.device)
         self.critic_target = critic_cls(observation_space.shape[0], action_space.shape[0],
@@ -280,48 +278,49 @@ class SAC(object):
         if self.conservative_safety_critics:
             satisfied = False
             pi = self.inner_pi
-            pi_params_save = pi.get_weights()
+            import copy
+            pi_params_save = copy.deepcopy(pi).get_weights()
 
             beta = self.beta_init # 0.7
+            rnd = self.torchify(np.random.randn(*action_batch.shape))
+
+            # From A.2 the modified advantage function
+            with torch.no_grad():
+                a_r = torch.min(*self.critic(state_batch, action_batch)) - v
+                a_c = torch.max(*self.safety_critic(state_batch, action_batch)) - v_risk
+                a_hat =  a_r - self.lam / (1. - self.gamma_safe) * a_c
+
+            # Backtracking search for beta to satisfy the constraint
+            # eq. 58 (A.2)
+            candidate_params = []
+
+            def inner_pi_loss_fn(*args):
+                p, log_p, _ = pi.sample_from_weights(state_batch, rnd, *args)
+                inner_pi_loss = (log_p * a_hat).mean()
+                return inner_pi_loss
+
+            self.policy_optim.zero_grad()
+            jaccs = torch.autograd.functional.jacobian(inner_pi_loss_fn, tuple(pi.flat_parameters()))
+            self.policy_optim.zero_grad()
+            hessians = [
+                jaccs[ii].view(-1, 1) @ jaccs[ii].view(-1, 1).T for ii in range(len(jaccs))
+            ]
+            #hessians = torch.autograd.functional.hessian(inner_pi_loss_fn, tuple(pi.flat_parameters()), vectorize=True,
+            #                                             create_graph=False)
 
             for i in range(1, self.conservative_critic_update_l + 1): # 20
-
-                # From A.2 the modified advantage function
-                with torch.no_grad():
-                    a_r = torch.min(*self.critic(state_batch, action_batch)) - v
-                    a_c = torch.max(*self.safety_critic(state_batch, action_batch)) - v_risk
-                    a_hat =  a_r - self.lam / (1. - self.gamma_safe) * a_c
-
-                rnd = self.torchify(np.random.randn(*action_batch.shape))
-
-                # Backtracking search for beta to satisfy the constraint
-                # eq. 58 (A.2)
-                candidate_params = []
-
-                def inner_pi_loss_fn(*args):
-                    p, log_p, _ = pi.sample_from_weights(state_batch, rnd, *args)
-                    inner_pi_loss = (log_p * a_hat).mean()
-                    return inner_pi_loss
-
-                with torch.no_grad():
-                    jaccs = torch.autograd.functional.jacobian(inner_pi_loss_fn, tuple(pi.parameters()))
-                    info_mats = torch.autograd.functional.hessian(inner_pi_loss_fn, tuple(pi.parameters()))
-
-                print(grads[0])
-                print(jaccs[0])
-                print(state_batch)
-                print(len(grads), len(jaccs))
-                print("DONE")
-                exit()
-                for grad, info_path, param in zip(jaccs, info_mats, pi.parameters()):
-                    print(grad.shape, info_mat.shape, param.shape)
-                    info_mat_inv = info_mat.pinverse()
-                    print(grad.shape, info_mat.T.shape, grad.shape)
+                for ii, (grad, hessian, param) in enumerate(zip(jaccs, hessians, pi.parameters())):
+                    info_mat = hessian #[ii]
+                    #info_mat = torch.where(info_mat != 0., info_mat, torch.ones_like(info_mat) * 1e-8)
+                    torch.set_printoptions(threshold=10_000)
+                    torch.set_printoptions(profile="full")
+                    print(grad, info_mat)
+                    info_mat_inv = info_mat.inverse()
                     b = beta * torch.sqrt(
-                        2. * self.trust_region / (grad @ info_mat.T @ grad + 1e-9)
+                        2. * self.trust_region / torch.clamp(grad.T @ info_mat @ grad, 1e-9, float('inf'))
                     )
-                    print(param.shape, b.shape, info_mat_inv.shape, grad.shape)
-                    candidate_params.append(param + (b @ info_mat_inv @ grad).view(*param.shape))
+                    update = (b * info_mat_inv @ grad).view(*param.shape)
+                    candidate_params.append(param + update)
 
                 pi.set_weights(candidate_params)
                 with torch.no_grad():
@@ -341,28 +340,6 @@ class SAC(object):
                 hard_update(self.policy, pi)
 
             hard_update(self.inner_pi, self.policy)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
             policy_loss = v_loss
 
@@ -411,7 +388,7 @@ class SAC(object):
         if updates % self.target_update_interval == 0:
             soft_update(self.critic_target, self.critic, self.tau)
             soft_update(self.value_f_target, self.value_f, self.tau)
-            soft_udpate(self.value_f_risk_target, self.value_f_risk, self.tau)
+            soft_update(self.value_f_risk_target, self.value_f_risk, self.tau)
 
         return qf1_loss.item(), qf2_loss.item(), v_loss.item(), v_risk_loss.item(), \
             policy_loss.item(), alpha_loss.item(), alpha_tlogs.item()

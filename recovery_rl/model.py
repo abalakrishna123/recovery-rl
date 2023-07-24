@@ -22,8 +22,8 @@ Global utilities
 # Initialize Policy weights
 def weights_init_(m):
     if isinstance(m, nn.Linear):
-        torch.nn.init.xavier_uniform_(m.weight, gain=1)
-        torch.nn.init.constant_(m.bias, 0)
+        torch.nn.init.xavier_normal_(m.weight)
+        torch.nn.init.constant_(m.bias, 0.)
 
 
 # Soft update of target critic network
@@ -326,17 +326,39 @@ class Policy(nn.Module):
 
     def get_weights(self):
         return [
-            weight.data for weight in self.parameters()
+            weight.detach() for weight in self.parameters()
         ]
 
     def set_weights(self, weights):
         for val, param in zip(weights, self.parameters()):
             param.data.copy_(val)
 
+    def flat_parameters(self):
+        return [
+            p.view(-1) for p in self.parameters()
+        ]
+
+    def unflat_params(self, params):
+        return [
+            params[0].view(*self.linear1.weight.shape),
+            params[1],
+            params[2].view(*self.linear2.weight.shape),
+            params[3],
+            params[4].view(*self.mean_linear.weight.shape),
+            params[5],
+            params[6].view(*self.log_std_linear.weight.shape),
+            params[7],
+        ]
+
 # Gaussian policy for SAC
 class GaussianPolicy(Policy):
     def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None):
         super(GaussianPolicy, self).__init__()
+
+        hidden_dim = 2
+        self.num_inputs = num_inputs
+        self.hidden_dim = hidden_dim
+        self.num_actions = num_actions
 
         self.linear1 = nn.Linear(num_inputs, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
@@ -384,7 +406,7 @@ class GaussianPolicy(Policy):
 
     def sample_from_weights(self, state, rnd, *weights):
 
-        print((weights[0] @ state.T).shape, weights[1].shape)
+        weights = self.unflat_params(weights)
         x = F.relu(state @ weights[0].T + weights[1])
         x = F.relu(x @ weights[2].T + weights[3])
         mu = x @ weights[4].T + weights[5]
@@ -414,11 +436,8 @@ class GaussianPolicy(Policy):
         d = mean0.shape[-1]
         mu, log_std = self.forward(state)
         mean1 = mu
-        print(mu)
-        print(log_std)
         std1 = log_std.exp()
 
-        print(std0, std1)
         return ((std1 / std0).log()).sum(dim=1) + (
             (std0.pow(2) + (mean0 - mean1).pow(2)) / (2.0 * std1.pow(2))).sum(dim=1) - 0.5 * d
 
