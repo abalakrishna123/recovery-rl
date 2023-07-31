@@ -1,7 +1,7 @@
 '''
 Latent dynamics models are built on latent dynamics model used in
 Goal-Aware Prediction: Learning to Model What Matters (ICML 2020). All
-other networks are built on SAC implementation from 
+other networks are built on SAC implementation from
 https://github.com/pranz24/pytorch-soft-actor-critic
 '''
 
@@ -22,8 +22,8 @@ Global utilities
 # Initialize Policy weights
 def weights_init_(m):
     if isinstance(m, nn.Linear):
-        torch.nn.init.xavier_uniform_(m.weight, gain=1)
-        torch.nn.init.constant_(m.bias, 0)
+        torch.nn.init.xavier_normal_(m.weight)
+        torch.nn.init.constant_(m.bias, 0.)
 
 
 # Soft update of target critic network
@@ -44,30 +44,39 @@ Architectures for critic functions and policies for SAC model-free recovery
 policies.
 '''
 
-
 # Q network architecture
 class QNetwork(nn.Module):
-    def __init__(self, num_inputs, num_actions, hidden_dim):
+    def __init__(self, num_inputs, num_actions, hidden_dim, two_nets=True, concat_action=True):
         super(QNetwork, self).__init__()
+
+        self.two_nets = two_nets
+        self.concat_action = concat_action
 
         # Q1 architecture
         self.linear1 = nn.Linear(num_inputs + num_actions, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
         self.linear3 = nn.Linear(hidden_dim, 1)
 
-        # Q2 architecture
-        self.linear4 = nn.Linear(num_inputs + num_actions, hidden_dim)
-        self.linear5 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear6 = nn.Linear(hidden_dim, 1)
+        if two_nets:
+            # Q2 architecture
+            self.linear4 = nn.Linear(num_inputs + num_actions, hidden_dim)
+            self.linear5 = nn.Linear(hidden_dim, hidden_dim)
+            self.linear6 = nn.Linear(hidden_dim, 1)
 
         self.apply(weights_init_)
 
     def forward(self, state, action):
-        xu = torch.cat([state, action], 1)
+        if self.concat_action:
+            xu = torch.cat([state, action], 1)
+        else:
+            xu = state
 
         x1 = F.relu(self.linear1(xu))
         x1 = F.relu(self.linear2(x1))
         x1 = self.linear3(x1)
+
+        if not self.two_nets:
+            return x1
 
         x2 = F.relu(self.linear4(xu))
         x2 = F.relu(self.linear5(x2))
@@ -78,8 +87,12 @@ class QNetwork(nn.Module):
 
 # Q network architecture for image observations
 class QNetworkCNN(nn.Module):
-    def __init__(self, observation_space, num_actions, hidden_dim, env_name):
+    def __init__(self, observation_space, num_actions, hidden_dim, env_name, two_nets=True, concat_action=True):
         super(QNetworkCNN, self).__init__()
+
+        self.two_nets = two_nets
+        self.concat_action = concat_action
+
         # Process the state
         self.conv1 = nn.Conv2d(observation_space[-1],
                                128,
@@ -116,10 +129,11 @@ class QNetworkCNN(nn.Module):
 
         self.final_linear = nn.Linear(self.final_linear_size, hidden_dim)
 
-        # Process the action
-        self.linear_act1 = nn.Linear(num_actions, hidden_dim)
-        self.linear_act2 = nn.Linear(hidden_dim, hidden_dim)
-        self.linear_act3 = nn.Linear(hidden_dim, hidden_dim)
+        if concat_action:
+            # Process the action
+            self.linear_act1 = nn.Linear(num_actions, hidden_dim)
+            self.linear_act2 = nn.Linear(hidden_dim, hidden_dim)
+            self.linear_act3 = nn.Linear(hidden_dim, hidden_dim)
 
         # Q1 architecture
 
@@ -128,11 +142,11 @@ class QNetworkCNN(nn.Module):
         self.linear2_1 = nn.Linear(hidden_dim, hidden_dim)
         self.linear3_1 = nn.Linear(hidden_dim, 1)
 
-        # Post state-action merge
-        self.linear1_2 = nn.Linear(2 * hidden_dim, hidden_dim)
-        self.linear2_2 = nn.Linear(hidden_dim, hidden_dim)
-
-        self.linear3_2 = nn.Linear(hidden_dim, 1)
+        if two_nets:
+            # Post state-action merge
+            self.linear1_2 = nn.Linear(2 * hidden_dim, hidden_dim)
+            self.linear2_2 = nn.Linear(hidden_dim, hidden_dim)
+            self.linear3_2 = nn.Linear(hidden_dim, 1)
 
         self.apply(weights_init_)
 
@@ -147,26 +161,44 @@ class QNetworkCNN(nn.Module):
 
         final_conv = F.relu(self.final_linear(final_conv))
 
-        # Process the action
-        x0 = F.relu(self.linear_act1(action))
-        x0 = F.relu(self.linear_act2(x0))
-        x0 = self.linear_act3(x0)
-
         # Concat
-        xu = torch.cat([final_conv, x0], 1)
+        if self.concat_action:
+            # Process the action
+            x0 = F.relu(self.linear_act1(action))
+            x0 = F.relu(self.linear_act2(x0))
+            x0 = self.linear_act3(x0)
+            xu = torch.cat([final_conv, x0], 1)
+        else:
+            xu = final_conv
 
         # Apply a few more FC layers in two branches
         x1 = F.relu(self.linear1_1(xu))
         x1 = F.relu(self.linear2_1(x1))
-
         x1 = self.linear3_1(x1)
+
+        if not self.two_nets:
+            return x1
 
         x2 = F.relu(self.linear1_2(xu))
         x2 = F.relu(self.linear2_2(x2))
-
         x2 = self.linear3_2(x2)
         return x1, x2
 
+
+class ValueNetwork(QNetwork):
+
+    def __init__(self, num_inputs, hidden_dim):
+        super().__init__(num_inputs, 0, hidden_dim, two_nets=False, concat_action=False)
+
+    def forward(self, state):
+        return super().forward(state, None)
+
+class ValueNetworkCNN(QNetworkCNN):
+    def __init__(self, num_inputs, hidden_dim):
+        super().__init__(num_inputs, 0, hidden_dim, two_nets=False, concat_action=False)
+
+    def forward(self, state):
+        return super().forward(state, None)
 
 # Q_risk network architecture
 class QNetworkConstraint(nn.Module):
@@ -290,11 +322,43 @@ class QNetworkConstraintCNN(nn.Module):
         x2 = F.sigmoid(self.linear3_2(x2))
         return x1, x2
 
+class Policy(nn.Module):
+
+    def get_weights(self):
+        return [
+            weight.detach() for weight in self.parameters()
+        ]
+
+    def set_weights(self, weights):
+        for val, param in zip(weights, self.parameters()):
+            param.data.copy_(val)
+
+    def flat_parameters(self):
+        return [
+            p.view(-1) for p in self.parameters()
+        ]
+
+    def unflat_params(self, params):
+        return [
+            params[0].view(*self.linear1.weight.shape),
+            params[1],
+            params[2].view(*self.linear2.weight.shape),
+            params[3],
+            params[4].view(*self.mean_linear.weight.shape),
+            params[5],
+            params[6].view(*self.log_std_linear.weight.shape),
+            params[7],
+        ]
 
 # Gaussian policy for SAC
-class GaussianPolicy(nn.Module):
+class GaussianPolicy(Policy):
     def __init__(self, num_inputs, num_actions, hidden_dim, action_space=None):
         super(GaussianPolicy, self).__init__()
+
+        hidden_dim = 2
+        self.num_inputs = num_inputs
+        self.hidden_dim = hidden_dim
+        self.num_actions = num_actions
 
         self.linear1 = nn.Linear(num_inputs, hidden_dim)
         self.linear2 = nn.Linear(hidden_dim, hidden_dim)
@@ -322,12 +386,15 @@ class GaussianPolicy(nn.Module):
         log_std = torch.clamp(log_std, min=LOG_SIG_MIN, max=LOG_SIG_MAX)
         return mean, log_std
 
-    def sample(self, state):
+    def sample(self, state, rnd=None):
         mean, log_std = self.forward(state)
         std = log_std.exp()
         normal = Normal(mean, std)
-        x_t = normal.rsample(
-        )  # for reparameterization trick (mean + std * N(0,1))
+
+        if rnd is None:
+            x_t = normal.rsample()
+        else:
+            x_t = mean + std * rnd
         y_t = torch.tanh(x_t)
         action = y_t * self.action_scale + self.action_bias
         log_prob = normal.log_prob(x_t)
@@ -337,14 +404,46 @@ class GaussianPolicy(nn.Module):
         mean = torch.tanh(mean) * self.action_scale + self.action_bias
         return action, log_prob, mean
 
+    def sample_from_weights(self, state, rnd, *weights):
+
+        weights = self.unflat_params(weights)
+        x = F.relu(state @ weights[0].T + weights[1])
+        x = F.relu(x @ weights[2].T + weights[3])
+        mu = x @ weights[4].T + weights[5]
+        log_std = x @ weights[6].T + weights[7]
+
+        std = log_std.exp()
+        normal = Normal(mu, std)
+        x_t = mu + std * rnd
+        y_t = torch.tanh(x_t)
+        action = y_t * self.action_scale + self.action_bias
+        log_prob = normal.log_prob(x_t)
+
+        log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + epsilon)
+        log_prob = log_prob.sum(1, keepdim=True)
+        mean = torch.tanh(mu) * self.action_scale + self.action_bias
+        return action, log_prob, mean
+
     def to(self, device):
         self.action_scale = self.action_scale.to(device)
         self.action_bias = self.action_bias.to(device)
         return super(GaussianPolicy, self).to(device)
 
+    def kl_div(self, state, other_mu, other_logstd):
+        mean0 = other_mu
+        std0 = other_logstd.exp()
+
+        d = mean0.shape[-1]
+        mu, log_std = self.forward(state)
+        mean1 = mu
+        std1 = log_std.exp()
+
+        return ((std1 / std0).log()).sum(dim=1) + (
+            (std0.pow(2) + (mean0 - mean1).pow(2)) / (2.0 * std1.pow(2))).sum(dim=1) - 0.5 * d
+
 
 # Gaussian policy for SAC for image observations
-class GaussianPolicyCNN(nn.Module):
+class GaussianPolicyCNN(Policy):
     def __init__(self,
                  observation_space,
                  num_actions,
