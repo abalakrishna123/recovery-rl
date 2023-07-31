@@ -11,6 +11,7 @@ import cv2
 from torch import nn, optim
 
 from recovery_rl.sac import SAC
+from recovery_rl.recovery_rl_agent import RecoveryRLAgent
 from recovery_rl.replay_memory import ReplayMemory, ConstraintReplayMemory
 from recovery_rl.MPC import MPC
 from recovery_rl.VisualMPC import VisualMPC
@@ -54,9 +55,6 @@ class Experiment:
         pickle.dump(self.exp_cfg,
                     open(os.path.join(self.logdir, "args.pkl"), "wb"))
 
-        # Experiment setup
-        self.experiment_setup()
-
         # Memory
         self.memory = ReplayMemory(self.exp_cfg.replay_size, self.exp_cfg.seed)
         self.recovery_memory = ConstraintReplayMemory(
@@ -72,6 +70,10 @@ class Experiment:
         self.num_successes = 0
         self.viol_and_recovery = 0
         self.viol_and_no_recovery = 0
+
+        # Experiment setup
+        self.experiment_setup()
+
         # Get demos
         self.task_demos = self.exp_cfg.task_demos
         self.constraint_demo_data, self.task_demo_data, self.obs_seqs, self.ac_seqs, self.constraint_seqs = self.get_offline_data(
@@ -156,23 +158,23 @@ class Experiment:
             register_env(self.exp_cfg.env_name)
             env = make_env(self.exp_cfg.env_name)
         self.env = env 
-        self.recovery_policy = recovery_policy
-        self.env.seed(self.exp_cfg.seed)
-        self.env.action_space.seed(self.exp_cfg.seed)
-        agent = self.agent_setup(env)
-        self.agent = agent
-        if self.exp_cfg.use_recovery and not (
-                self.exp_cfg.MF_recovery
-                or self.exp_cfg.Q_sampling_recovery):
-            recovery_policy.update_value_func(agent.safety_critic)
-
-    def agent_setup(self, env):
-        agent = SAC(env.observation_space,
+        self.task_policy = SAC(env.observation_space,
                     env.action_space,
                     self.exp_cfg,
                     self.logdir,
                     tmp_env=make_env(self.exp_cfg.env_name))
-        return agent
+        self.recovery_policy = recovery_policy
+        self.env.seed(self.exp_cfg.seed)
+        self.env.action_space.seed(self.exp_cfg.seed)
+        self.agent = RecoveryRLAgent(self.task_policy, 
+                                self.recovery_policy,
+                                self.env, 
+                                self.exp_cfg,
+                                self.total_numsteps)
+        if self.exp_cfg.use_recovery and not (
+                self.exp_cfg.MF_recovery
+                or self.exp_cfg.Q_sampling_recovery):
+            recovery_policy.update_value_func(agent.safety_critic)
 
     def get_offline_data(self):
         # Get demonstrations
@@ -289,9 +291,9 @@ class Experiment:
             for i in range(self.exp_cfg.critic_safe_pretraining_steps):
                 if i % 100 == 0:
                     print("CRITIC SAFE UPDATE STEP: ", i)
-                self.agent.safety_critic.update_parameters(
+                self.agent.task_policy.safety_critic.update_parameters(
                     memory=self.recovery_memory,
-                    policy=self.agent.policy,
+                    composite_policy=self.agent,
                     batch_size=min(self.exp_cfg.batch_size,
                                    len(self.constraint_demo_data)))
 
@@ -323,14 +325,14 @@ class Experiment:
             print("Number of Constraint Violations: ",
                   self.num_constraint_violations)
             # Pass encoder to safety critic:
-            self.agent.safety_critic.encoder = self.recovery_policy.get_encoding
+            self.agent.task_policy.safety_critic.encoder = self.agent.recovery_policy.get_encoding
             # Train safety critic on encoded states
             for i in range(self.exp_cfg.critic_safe_pretraining_steps):
                 if i % 100 == 0:
                     print("CRITIC SAFE UPDATE STEP: ", i)
-                self.agent.safety_critic.update_parameters(
+                self.agent.task_policy.safety_critic.update_parameters(
                     memory=self.recovery_memory,
-                    policy=self.agent.policy,
+                    policy=self.agent,
                     batch_size=min(self.exp_cfg.batch_size,
                                    len(self.constraint_demo_data)))
 
@@ -346,11 +348,11 @@ class Experiment:
         for i in range(self.exp_cfg.critic_pretraining_steps):
             if i % 100 == 0:
                 print("Update: ", i)
-            self.agent.update_parameters(
+            self.agent.task_policy.update_parameters(
                 self.memory,
                 min(self.exp_cfg.batch_size, self.num_task_transitions),
                 self.updates,
-                safety_critic=self.agent.safety_critic)
+                safety_critic=self.agent.task_policy.safety_critic)
             self.updates += 1
 
     def run(self):
@@ -398,25 +400,28 @@ class Experiment:
                 # Number of updates per step in environment
                 for i in range(self.exp_cfg.updates_per_step):
                     # Update parameters of all the networks
-                    critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = self.agent.update_parameters(
+                    critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = self.agent.task_policy.update_parameters(
                         self.memory,
                         min(self.exp_cfg.batch_size, len(self.memory)),
                         self.updates,
-                        safety_critic=self.agent.safety_critic,
+                        safety_critic=self.agent.task_policy.safety_critic,
                         nu=self.nu_schedule(i_episode))
                     if not self.exp_cfg.disable_online_updates and len(
                             self.recovery_memory) > self.exp_cfg.batch_size and (
                             self.num_viols + self.num_constraint_violations
                     ) / self.exp_cfg.batch_size > self.exp_cfg.pos_fraction:
-                        self.agent.safety_critic.update_parameters(
+                        self.agent.task_policy.safety_critic.update_parameters(
                             memory=self.recovery_memory,
-                            policy=self.agent.policy,
+                            composite_policy=self.agent,
                             batch_size=self.exp_cfg.batch_size,
                             plot=0)
                     self.updates += 1
 
             # Get action, execute action, and compile step results
-            action, real_action, recovery_used = self.get_action(state)
+            action, real_action, recovery_used = self.agent.sample(torchify(state).unsqueeze(0))
+            action = action.cpu().detach().numpy()[0]
+            real_action = real_action.cpu().detach().numpy()[0]
+            recovery_used = recovery_used.cpu().detach().numpy()[0][0]
             next_state, reward, done, info = self.env.step(real_action)
             info['recovery'] = recovery_used
 
@@ -507,8 +512,11 @@ class Experiment:
         episode_steps = 0
         done = False
         while not done:
-            action, real_action, recovery_used = self.get_action(state,
+            action, real_action, recovery_used = self.agent.sample(torchify(state).unsqueeze(0),
                                                                  train=False)
+            action = action.cpu().detach().numpy()[0]
+            real_action = real_action.cpu().detach().numpy()[0]
+            recovery_used = recovery_used.cpu().detach().numpy()[0][0]                                                        
             next_state, reward, done, info = self.env.step(real_action)  # Step
             info['recovery'] = recovery_used
             done = done or episode_steps == self.env._max_episode_steps
@@ -541,37 +549,3 @@ class Experiment:
         data = {"test_stats": test_rollouts, "train_stats": train_rollouts}
         with open(osp.join(self.logdir, "run_stats.pkl"), "wb") as f:
             pickle.dump(data, f)
-
-
-    def get_action(self, state, train=True):
-        def recovery_thresh(state, action):
-            if not self.exp_cfg.use_recovery:
-                return False
-
-            critic_val = self.agent.safety_critic.get_value(
-                torchify(state).unsqueeze(0),
-                torchify(action).unsqueeze(0))
-
-            if critic_val > self.exp_cfg.eps_safe:
-                return True
-            return False
-
-        if self.exp_cfg.start_steps > self.total_numsteps and train:
-            action = self.env.action_space.sample()  # Sample random action
-        elif train:
-            action = self.agent.select_action(
-                state)  # Sample action from policy
-        else:
-            action = self.agent.select_action(
-                state, eval=True)  # Sample action from policy
-
-        if recovery_thresh(state, action):
-            recovery = True
-            if self.exp_cfg.MF_recovery or self.exp_cfg.Q_sampling_recovery:
-                real_action = self.agent.safety_critic.select_action(state)
-            else:
-                real_action = self.recovery_policy.act(state, 0)
-        else:
-            recovery = False
-            real_action = np.copy(action)
-        return action, real_action, recovery
