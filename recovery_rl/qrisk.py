@@ -85,7 +85,7 @@ class QRiskWrapper:
 
     def update_parameters(self,
                           memory=None,
-                          composite_policy=None,
+                          policy=None,
                           batch_size=None,
                           plot=False):
         '''
@@ -94,7 +94,7 @@ class QRiskWrapper:
 
         Arguments:
             memory: Agent's replay buffer
-            composite_policy: Agent's composite policy
+            policy: Agent's composite policy
             critic: Safety critic (Q_risk)
         '''
         if self.pos_fraction:
@@ -116,7 +116,7 @@ class QRiskWrapper:
             next_state_batch_enc = self.encoder(next_state_batch)
 
         with torch.no_grad():
-            _, next_state_action, _ = composite_policy.sample(
+            next_state_action, next_state_log_pi, _ = policy.sample(
                 next_state_batch)
             if self.encoding:
                 qf1_next_target, qf2_next_target = self.safety_critic_target(
@@ -168,15 +168,15 @@ class QRiskWrapper:
 
         if plot and self.updates % 1000 == 0:
             if self.env_name in ['simplepointbot0', 'simplepointbot1', 'maze']:
-                self.plot(self.updates, [.1, 0], "right")
-                self.plot(self.updates, [-.1, 0], "left")
-                self.plot(self.updates, [0, .1], "up")
-                self.plot(self.updates, [0, -.1], "down")
+                self.plot(policy, self.updates, [.1, 0], "right")
+                self.plot(policy, self.updates, [-.1, 0], "left")
+                self.plot(policy, self.updates, [0, .1], "up")
+                self.plot(policy, self.updates, [0, -.1], "down")
             elif self.env_name == 'image_maze':
-                self.plot(self.updates, [.3, 0], "right")
-                self.plot(self.updates, [-.3, 0], "left")
-                self.plot(self.updates, [0, .3], "up")
-                self.plot(self.updates, [0, -.3], "down")
+                self.plot(policy, self.updates, [.3, 0], "right")
+                self.plot(policy, self.updates, [-.3, 0], "left")
+                self.plot(policy, self.updates, [0, .3], "up")
+                self.plot(policy, self.updates, [0, -.3], "down")
             else:
                 raise NotImplementedError(
                     "Unsupported environment for plotting")
@@ -204,12 +204,13 @@ class QRiskWrapper:
             Returns:
                 action
         '''
+        state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
         if self.MF_recovery:
             if eval is False:
                 action, _, _ = self.policy.sample(state)
             else:
                 _, _, action = self.policy.sample(state)
-            return action.detach()
+            return action.detach().cpu().numpy()[0]
         elif self.Q_sampling_recovery:
             if not self.images:
                 state_batch = state.repeat(1000, 1)
@@ -221,11 +222,11 @@ class QRiskWrapper:
             q_vals = self.get_value(state_batch, sampled_actions)
             min_q_value_idx = torch.argmin(q_vals)
             action = sampled_actions[min_q_value_idx]
-            return action.detach()
+            return action.detach().cpu().numpy()
         else:
             assert False
 
-    def plot(self, ep, action=None, suffix="", critic=None):
+    def plot(self, pi, ep, action=None, suffix="", critic=None):
         '''
             Interface for visualizing Q_risk for all navigation
             environments.

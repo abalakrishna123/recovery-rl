@@ -60,8 +60,8 @@ class Navigation1(Env, utils.EzPickle):
         self.horizon = HORIZON
         self.action_space = Box(-np.ones(2) * MAX_FORCE,
                                 np.ones(2) * MAX_FORCE)
-        self.observation_space = Box(-np.ones(2) * float('inf'),
-                                     np.ones(2) * float('inf'))
+        self.observation_space = Box(-np.ones(2) * np.float('inf'),
+                                     np.ones(2) * np.float('inf'))
         self._max_episode_steps = HORIZON
         self.obstacle = OBSTACLE
         self.caution_zone = CAUTION_ZONE

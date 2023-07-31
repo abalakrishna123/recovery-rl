@@ -134,6 +134,7 @@ class SAC(object):
         '''
             Get action from current task policy
         '''
+        state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
         # Action Sampling for SQRL
         if self.use_constraint_sampling:
             self.safe_samples = 100  # TODO: don't hardcode
@@ -164,7 +165,7 @@ class SAC(object):
                 action, _, _ = self.policy.sample(state)
             else:
                 _, _, action = self.policy.sample(state)
-        return action
+        return action.detach().cpu().numpy()[0]
 
     def update_parameters(self,
                           memory,
