@@ -210,6 +210,18 @@ def get_args():
 
     ################### Comparisons ###################
 
+    # Safety Editor
+    parser.add_argument(
+        '--use_safety_editor',
+        action='store_true',
+        help='whether to use the safety editor')
+
+    parser.add_argument(
+        '--safety_editor_lambda',
+        type=float,
+        default=0,
+        help='safety editor lambda parameter')
+
     # RP
     parser.add_argument(
         '--constraint_reward_penalty',

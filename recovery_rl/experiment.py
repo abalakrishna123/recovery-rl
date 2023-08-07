@@ -292,6 +292,7 @@ class Experiment:
                 self.agent.safety_critic.update_parameters(
                     memory=self.recovery_memory,
                     policy=self.agent.policy,
+                    critic=self.agent.critic,
                     batch_size=min(self.exp_cfg.batch_size,
                                    len(self.constraint_demo_data)))
 
@@ -331,6 +332,7 @@ class Experiment:
                 self.agent.safety_critic.update_parameters(
                     memory=self.recovery_memory,
                     policy=self.agent.policy,
+                    critic=self.agent.critic,
                     batch_size=min(self.exp_cfg.batch_size,
                                    len(self.constraint_demo_data)))
 
@@ -411,6 +413,7 @@ class Experiment:
                         self.agent.safety_critic.update_parameters(
                             memory=self.recovery_memory,
                             policy=self.agent.policy,
+                            critic=self.agent.critic,
                             batch_size=self.exp_cfg.batch_size,
                             plot=0)
                     self.updates += 1
@@ -574,4 +577,11 @@ class Experiment:
         else:
             recovery = False
             real_action = np.copy(action)
+
+        # If using the safety editor, always just sample from recovery policy
+        if self.exp_cfg.use_safety_editor:
+            if self.exp_cfg.MF_recovery or self.exp_cfg.Q_sampling_recovery:
+                real_action = self.agent.safety_critic.select_action(state)
+            else:
+                real_action = self.recovery_policy.act(state, 0)                
         return action, real_action, recovery

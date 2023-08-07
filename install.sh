@@ -7,7 +7,8 @@ apt install -y python3-pip ffmpeg zip unzip libsm6 libxext6 libgl1-mesa-dev libo
 # install Python dependencies in a virtualenv
 virtualenv -p python3 venv
 . venv/bin/activate
-pip3 install numpy scipy gym dotmap matplotlib tqdm opencv-python tensorboardX moviepy plotly gdown
+pip3 install numpy scipy dotmap matplotlib tqdm opencv-python tensorboardX moviepy plotly gdown
+pip3 install gym==0.17.3
 pip3 install torch==1.4.0
 pip3 install torchvision==0.5.0
 pip3 install mujoco_py==1.50.1.68
